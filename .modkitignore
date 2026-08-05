@@ -1,0 +1,3 @@
+# Exact relative paths, one per line: tests are for the checkout, not the
+# shipped package.
+tests/battle_dex_test.lua

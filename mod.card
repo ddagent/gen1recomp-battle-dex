@@ -1,0 +1,31 @@
+-- Sharing metadata (25-community-and-ecosystem.md 3.2).  Read by tooling
+-- and the manager detail pane; never by the loader's merge.
+return {
+  summary = "Read a POKeDEX entry from inside a battle -- SELECT for the opponent, a DEX row for your own party.",
+  author = "battle_dex",
+  contact = "https://github.com/AverageConsumer/gen1recomp",
+  tags = { "ui", "quality-of-life", "pokedex", "battle" },
+  differences = {
+    changed = {
+      "the in-battle PKMN submenu gains a DEX row under STATS",
+    },
+    added = {
+      "SELECT at the battle menu opens the opponent's dex entry",
+      "an on-screen badge at the battle prompt naming the button",
+      "mod options: FOE DEX BUTTON, DEX IN PKMN MENU, SHOW UNSEEN DATA, SHOW DEX BADGE, BADGE CORNER",
+      "exports foeSpecies(game) for other mods",
+    },
+    known = {
+      "does nothing in link battles: pausing one side only would desync the peer",
+      "does nothing in the unidentified GHOST encounter, which the SILPH SCOPE is for",
+      "the page opens one fixed step after the press, because input.step runs before edges are promoted",
+      "SHOW UNSEEN DATA on reveals height/weight/text for a mon you have not caught; turn it off for a vanilla-strict run",
+      "the TOP RIGHT badge overlaps the top ~14px of the foe's sprite slot; BADGE CORNER moves it to the empty bottom-left corner on the OG layout",
+    },
+  },
+  credits = {
+    { who = "pret/pokered", for_ = "the dex page and party submenu layouts this hangs off" },
+    { who = "mods/examples/example_dexnav", for_ = "the decorate-don't-replace hook pattern" },
+  },
+  compat = { engine = ">=0.0.0-0 <2.0.0", modApi = 2 },
+}

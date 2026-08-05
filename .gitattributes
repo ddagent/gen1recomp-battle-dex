@@ -1,0 +1,7 @@
+# The release workflow builds the .zip from `git archive HEAD`, so anything
+# marked export-ignore here stays out of the shipped package. Tests need the
+# engine checkout to run and are useless to a player; .modkitignore keeps the
+# manual `modkit pack` path in agreement.
+tests/ export-ignore
+.gitattributes export-ignore
+.modkitignore export-ignore
