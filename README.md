@@ -7,10 +7,25 @@ Persona: **the quality-of-life author** — no data is changed, no battle
 outcome moves, and every addition is a door into a page the engine already
 draws.
 
+## Updating
+
+`manifest.json` carries `"github": "ddagent/gen1recomp-battle-dex"`, so the
+launcher's MODS tab checks this repo's releases and offers **Update** when a
+newer one appears. Update checks are cached for 6 hours; the tab's refresh
+forces a re-check.
+
+A release is picked up when its tag is `vX.Y.Z` and it carries a `.zip`
+asset — `battle_dex-<version>.zip` is preferred by name. Cutting one:
+
+```sh
+python3 tools/modkit.py pack battle_dex -o battle_dex-<version>.zip
+gh release create v<version> --title <version> battle_dex-<version>.zip
+```
+
 ## Test it
 
 ```sh
-luajit mods/battle_dex/tests/battle_dex_test.lua   # 25 checks, no ROM needed
+luajit mods/battle_dex/tests/battle_dex_test.lua   # 43 checks, no ROM needed
 python3 tools/modkit.py validate battle_dex
 python3 tools/modkit.py lint battle_dex
 ```
