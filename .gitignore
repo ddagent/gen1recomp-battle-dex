@@ -1,0 +1,11 @@
+# The GitHub Actions release workflow is kept on disk but out of git: the
+# token this repo was pushed with has `repo` scope but not `workflow`, and
+# GitHub refuses any push that creates or updates a file under
+# .github/workflows without it. Releases are cut directly instead:
+#
+#   python3 tools/modkit.py pack battle_dex -o battle_dex-<version>.zip
+#   gh release create v<version> --title <version> battle_dex-<version>.zip
+#
+# To switch to CI releases: `gh auth refresh -s workflow` (needs an
+# interactive shell), delete this file, then commit .github/.
+.github/
