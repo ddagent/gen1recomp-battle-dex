@@ -25,7 +25,7 @@ gh release create v<version> --title <version> battle_dex-<version>.zip
 ## Test it
 
 ```sh
-luajit mods/battle_dex/tests/battle_dex_test.lua   # 43 checks, no ROM needed
+luajit mods/battle_dex/tests/battle_dex_test.lua   # 62 checks, no ROM needed
 python3 tools/modkit.py validate battle_dex
 python3 tools/modkit.py lint battle_dex
 ```
@@ -78,12 +78,12 @@ everything around it went wide. It also drops every opaque white fill
 over a dark wall are unreadable, and `BattleHud` earns its own contrast the
 same way, with tint rather than opacity.
 
-`TOP RIGHT` (the default) overlaps the top ~14px of the foe's sprite slot in
-both layouts, which is why the badge carries its own plate. Most Gen 1 front
-sprites leave those rows empty, but a tall mon will be clipped there — switch
-`BADGE CORNER` to `BOTTOM LEFT` if that bothers you. On the OG layout that
-corner is genuinely empty (the menu box only covers x64–160); on WIDE it
-shares space with "What will X do?".
+`BADGE CORNER` moves it to `BOTTOM LEFT` if you prefer. On the OG layout that
+corner is genuinely empty — the menu box only covers x64–160 — while on WIDE
+it shares space with "What will X do?". In the flat layouts `TOP RIGHT`
+overlaps the top rows of the foe's 7×7 pic slot, which the plate covers;
+in the voxel arena the foe is a model in the scene rather than a slot, so
+nothing is obscured there.
 
 ## Options
 
