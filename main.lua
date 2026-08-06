@@ -71,11 +71,29 @@ return function(mod)
   -- false every single time and the toggle would look broken rather than
   -- quiet.  So the mod keeps its own roll in its own save bucket.
   --
-  -- It is seeded from the dex on the first battle after install, minus the
-  -- current species: everything you had seen BEFORE this battle, which is
-  -- exactly the truth markSeen just overwrote.  Without that subtraction the
-  -- very first encounter after installing would seed itself as already-met
-  -- and never fire.
+  -- Seeding happens at save.loaded / save.created, which is the only moment
+  -- the dex can be read honestly: Game:adoptSave has already pointed
+  -- mod.save at this slot's modData (Game.lua:1099) and the event fires
+  -- after (:1128), while no battle -- and therefore no markSeen -- has run
+  -- yet.  So the roll is the dex exactly as it stood, with nothing to
+  -- subtract and nothing to guess.
+  local function seedFrom(save)
+    if type(mod.save:get("met")) == "table" then return end   -- already ours
+    local roll = {}
+    local dex = save and save.pokedex
+    for id in pairs(dex and dex.seen or {}) do roll[id] = true end
+    mod.save:set("met", roll)
+  end
+
+  mod.events:on("save.loaded", function(ev) seedFrom(ev and ev.save) end)
+  mod.events:on("save.created", function(ev) seedFrom(ev and ev.save) end)
+
+  -- Last resort, if a battle somehow arrives before either event.  Here the
+  -- dex has already been written by markSeen, so the current species has to
+  -- be subtracted back out -- a guess, and the reason the real seeding
+  -- above exists: it cannot tell "markSeen just added this" from "this was
+  -- already known", so a first battle against a species you HAD seen would
+  -- open once.
   local function met(game, species)
     local roll = mod.save:get("met")
     if type(roll) ~= "table" then
@@ -85,6 +103,8 @@ return function(mod)
         if id ~= species then roll[id] = true end
       end
       mod.save:set("met", roll)
+      mod.log:warn("seeded the met roll from a battle rather than save.loaded; "
+        .. "%s may open once even if you had met it", tostring(species))
     end
     return roll
   end

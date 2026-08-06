@@ -3,6 +3,21 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.7.1
+
+### Fixed
+
+- A species you had already seen could auto-open once, if it happened to be
+  the first battle after installing. The roll was seeded at that first
+  battle, by which point `markSeen` had already written the dex, so it had
+  to subtract the current species back out — and it could not tell "markSeen
+  just added this" from "this was already known".
+- Seeding now happens at `save.loaded` / `save.created`, which is the only
+  honest moment: `Game:adoptSave` has already pointed `mod.save` at the
+  slot's `modData` (Game.lua:1099) and the event fires after (:1128), while
+  no battle has run. Nothing to subtract, nothing to guess. The battle-time
+  path survives as a warned fallback.
+
 ## 1.7.0
 
 ### Added

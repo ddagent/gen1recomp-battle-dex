@@ -176,6 +176,37 @@ local function dexGame(pressed)
   return game
 end
 
+-- The real seeding path: save.loaded fires after Game:adoptSave has pointed
+-- mod.save at this slot, and before any battle has run markSeen.  Seeding
+-- there needs no subtraction and cannot mistake a species you already knew
+-- for a new one -- which the battle-time fallback below genuinely can.
+do
+  run.loader.modSave.battle_dex = nil
+  local game = dexGame()
+  -- as the engine has it at load: SEEN_BEFORE is in the dex, BRAND_NEW is not
+  Runtime.emit("save.loaded", { save = {
+    pokedex = { seen = { [SEEN_BEFORE] = true }, owned = {} } } })
+  local roll = run.loader.modSave.battle_dex.met
+  T.eq(roll[SEEN_BEFORE], true, "save.loaded seeds the roll from the dex")
+  T.eq(roll[BRAND_NEW], nil, "and a species not in the dex stays unmet")
+
+  -- the case that was wrong before: the FIRST battle after install is a
+  -- species you had already seen.  It must stay quiet.
+  local b = startDexBattle(game, SEEN_BEFORE)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before,
+    "a first battle against an already-seen species does not auto-open")
+  endBattle(game)
+
+  -- and seeding never overwrites a roll that is already ours
+  run.loader.modSave.battle_dex.met = { KEEPME = true }
+  Runtime.emit("save.loaded", { save = { pokedex = { seen = { OTHER = true } } } })
+  T.eq(run.loader.modSave.battle_dex.met.KEEPME, true,
+    "a save that already has a roll keeps it")
+  T.eq(run.loader.modSave.battle_dex.met.OTHER, nil, "and is not re-seeded")
+end
+
 do
   run.loader.modSave.battle_dex = nil   -- a fresh install
   local game = dexGame()
