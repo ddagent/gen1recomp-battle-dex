@@ -3,7 +3,7 @@
 return {
   summary = "Read a POKeDEX entry from inside a battle -- SELECT for the opponent, a DEX row for your own party.",
   author = "battle_dex",
-  contact = "https://github.com/AverageConsumer/gen1recomp",
+  contact = "https://github.com/ddagent/gen1recomp-battle-dex",
   tags = { "ui", "quality-of-life", "pokedex", "battle" },
   differences = {
     changed = {
