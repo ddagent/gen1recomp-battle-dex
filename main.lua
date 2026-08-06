@@ -206,31 +206,42 @@ return function(mod)
     return math.ceil(content / TILE) + 2, math.ceil(iconH / TILE) + 2
   end
 
-  -- The arena's glass, on the arena's own numbers.  BattleHud lays a blurred
-  -- capture at FROST under a white wash at TINT, and OverworldBattle's own
-  -- comment says why: "The HUDs got frosted panels because black glyphs on
-  -- grass are not readable."  Two stacked translucent layers cover as much
-  -- as one at 1-(1-a)(1-b), so that is the single wash equivalent to their
-  -- pair -- and it tracks their tuning instead of a number we made up.
-  local FALLBACK_WASH = 0.67
-  local wash, washTried = nil, false
+  -- The arena's glass is not a wash we can mix ourselves.  BattleHud.panel
+  -- draws a BLURRED COPY OF THE WORLD BEHIND THE RECT at FROST, and only
+  -- then a white tint at TINT -- so the panel keeps the scene's own colour
+  -- and merely lifts it toward white.  Any flat white of our own reads more
+  -- opaque than that no matter what alpha we pick, because it throws the
+  -- scene away instead of blurring it.  So call theirs: it is a documented
+  -- entry point ("in that target's own coordinates ... world pixels
+  -- (world = true) for a panel laid straight onto the world image"), and
+  -- OverworldBattle lays the HUDs AND the text box with the same call.
+  local hudLib, hudTried = nil, false
 
-  local function arenaWash()
-    if washTried then return wash end
-    washTried = true
-    wash = FALLBACK_WASH
+  local function battleHud()
+    if hudTried then return hudLib end
+    hudTried = true
     local handle = type(mod.find) == "function" and mod.find("DRAMATIC_SHAPE")
     local lib = handle and handle.exports and handle.exports.lib
-    if not lib or type(lib.require) ~= "function" then return wash end
+    if not lib or type(lib.require) ~= "function" then return nil end
     local ok, hud = pcall(lib.require, "BattleHud")
-    if not ok or type(hud) ~= "table" then return wash end
-    local frost, tint = tonumber(hud.FROST), tonumber(hud.TINT)
-    if frost and tint then
-      wash = 1 - (1 - frost) * (1 - tint)
-      mod.log:info("glass matched to DRAMATIC_SHAPE: frost %.2f tint %.2f -> %.2f",
-                   frost, tint, wash)
+    if ok and type(hud) == "table" and type(hud.panel) == "function" then
+      hudLib = hud
+      mod.log:info("glass: using DRAMATIC_SHAPE's own BattleHud.panel")
     end
-    return wash
+    return hudLib
+  end
+
+  -- true once the real frosted panel is down.  It returns false of its own
+  -- accord when the frost buffer is not built yet (early frames, or a
+  -- device where the canvas could not be made), which is exactly when we
+  -- still owe the glyphs a backing -- hence the flat fallback below.
+  local FALLBACK_WASH = 0.67
+
+  local function arenaGlass(x, y, w, h, shot)
+    local hud = battleHud()
+    if not hud then return false end
+    local ok, drew = pcall(hud.panel, { x, y, w, h }, shot, true)
+    return ok and drew == true
   end
 
   -- Font.drawBox's interior is an opaque white fill, which is exactly the
@@ -253,7 +264,9 @@ return function(mod)
   end
 
   -- Draws at the origin in GB pixels; the caller owns the transform.
-  local function drawBadge(theBattle, label, iconW, iconH, solid)
+  -- `glassed` says the frosted panel is already down, so the interior must
+  -- not be painted over it.
+  local function drawBadge(theBattle, label, iconW, iconH, solid, glassed)
     local g = love.graphics
     local Font = mod.ui.Font
     local tw, th = boxTiles(iconW, iconH, label)
@@ -261,8 +274,10 @@ return function(mod)
     if solid then
       Font.drawBox(0, 0, tw, th)
     else
-      g.setColor(1, 1, 1, arenaWash())
-      g.rectangle("fill", 0, 0, tw * TILE, th * TILE)
+      if not glassed then
+        g.setColor(1, 1, 1, FALLBACK_WASH)
+        g.rectangle("fill", 0, 0, tw * TILE, th * TILE)
+      end
       g.setColor(1, 1, 1, 1)
       boxWithoutFill(function() Font.drawBox(0, 0, tw, th) end)
     end
@@ -322,14 +337,21 @@ return function(mod)
 
     if shot then
       local s = shot.scale
-      g.setCanvas(shot.canvas)
+      local ox, oy
       if bottomLeft then
-        g.translate(PAD * s, shot.ph - (boxH + PAD) * s)
+        ox, oy = PAD * s, shot.ph - (boxH + PAD) * s
       else
-        g.translate(shot.pw - (boxW + PAD) * s, shot.ly + PAD * s)
+        ox, oy = shot.pw - (boxW + PAD) * s, shot.ly + PAD * s
       end
+      g.setCanvas(shot.canvas)
+      -- the same blend OverworldBattle sets before its own panel run
+      if g.setBlendMode then g.setBlendMode("alpha") end
+      -- panel draws in the target's own coordinates, so it goes down BEFORE
+      -- the transform, with the rect in world pixels
+      local glassed = arenaGlass(ox, oy, boxW * s, boxH * s, shot)
+      g.translate(ox, oy)
       g.scale(s, s)
-      drawBadge(theBattle, label, iconW, iconH, false)
+      drawBadge(theBattle, label, iconW, iconH, false, glassed)
     else
       local w, h = 160, 144
       if theBattle.uiSize then

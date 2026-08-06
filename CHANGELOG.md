@@ -3,6 +3,21 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.4.0
+
+### Fixed
+
+- The badge read more opaque than the game's other panels. It was painting a
+  flat white wash; DRAMATIC_SHAPE's panels draw a *blurred copy of the world
+  behind the rect* at `FROST` and only then a white tint at `TINT`, so they
+  keep the scene's own colour instead of covering it. No flat fill can
+  imitate that at any alpha.
+- The badge now calls `BattleHud.panel(rect, shot, true)` — the documented
+  world-pixel form, the same call `OverworldBattle` uses for both HUDs and
+  the text box — so its glass is literally the same glass. The flat wash
+  remains only for when that panel declines (frost buffer not built yet) or
+  the voxel mod is not installed.
+
 ## 1.3.0
 
 ### Changed

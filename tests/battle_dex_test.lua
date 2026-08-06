@@ -375,6 +375,76 @@ do
   T.check(ok, "a battle without uiSize/bottomUIVisible degrades to 160x144")
 end
 
+-- ------- the arena's real glass
+--
+-- The panel is DRAMATIC_SHAPE's, not ours: it blurs the world behind the
+-- rect and lifts it toward white, which no flat fill of ours can imitate --
+-- ours throws the scene away instead of blurring it, and reads more opaque
+-- whatever alpha it picks.  So the thing worth asserting is that we call
+-- theirs, with the rect in the world pixels its contract asks for, and that
+-- we do not then paint our own interior over it.
+--
+-- battleHud() resolves once and remembers, and the cases above already
+-- resolved it to nil, so this needs its own instance.
+
+do
+  local glassData = T.fixtures.fresh()
+  glassData.screens = { DexEntryMenu = function() return { stub = true } end }
+
+  local calls = {}
+  local FAKE_HUD = {
+    FROST = 0.55, TINT = 0.26,
+    panel = function(rect, box, world)
+      calls[#calls + 1] = { rect = rect, box = box, world = world }
+      return true
+    end,
+  }
+
+  local run3 = T.sdk.loadMod("mods/battle_dex", { data = glassData })
+  T.eq(#run3.errors, 0, "loads clean alongside a voxel mod")
+  run3.loader.modOptions.battle_dex = {}
+  -- stand in for the installed DRAMATIC_SHAPE: mod.find only hands back a
+  -- handle for an enabled, unfailed mod with an exports table
+  run3.loader.mods.DRAMATIC_SHAPE =
+    { id = "DRAMATIC_SHAPE", enabled = true, failed = false,
+      manifest = { version = "1.5.5" } }
+  run3.loader.exports.DRAMATIC_SHAPE =
+    { lib = { require = function(name)
+        T.eq(name, "BattleHud", "it asks the lib for BattleHud by name")
+        return FAKE_HUD
+      end } }
+
+  local b = newBattle()
+  b.game = { data = glassData }
+  b.dramaticShapeShot = { canvas = "CANVAS", scale = 4,
+                          pw = 1920, ph = 1080, lx = 460, ly = 60 }
+  resetSpies()
+  Runtime.call("battle.overlay", function() end, b)
+
+  T.eq(#calls, 1, "the frosted panel is drawn through their own function")
+  T.eq(calls[1].world, true, "with world = true, the contract for a world-pixel rect")
+  T.eq(calls[1].box, b.dramaticShapeShot, "and the shot as the box")
+  -- same origin the badge translates to, sized in world pixels
+  T.eq(calls[1].rect[1], origin.x, "the rect starts where the badge does")
+  T.eq(calls[1].rect[3], BOX_W * 4, "and is the badge's own width, scaled")
+  T.eq(plate(BOX_W * 4), nil,
+    "no fill of ours over their glass -- that is what made it read opaque")
+
+  -- when the frost buffer is not up yet their panel declines, and the
+  -- glyphs would otherwise sit on bare scene
+  FAKE_HUD.panel = function() return false end
+  local b2 = newBattle()
+  b2.game = { data = glassData }
+  b2.dramaticShapeShot = b.dramaticShapeShot
+  resetSpies()
+  Runtime.call("battle.overlay", function() end, b2)
+  local fallback = plate(BOX_W)
+  T.check(fallback ~= nil, "a declined panel falls back to a flat wash")
+  T.check(fallback.alpha < 1, "still translucent, never an opaque plate")
+
+  run3.release()
+end
+
 -- ------- the POKeDEX sprite
 --
 -- The icon is OAK's table POKeDEX read from the player's cache, so it only
