@@ -39,14 +39,83 @@ return function(mod)
       default = "top_right",
       choices = { { "TOP RIGHT", "top_right" },
                   { "BOTTOM LEFT", "bottom_left" } } },
+    -- Percent of the arena's own magnification.  Only the arena honours it:
+    -- the flat layouts draw one GB pixel to one and have nothing to give
+    -- back, so anything under 100 there would resample the art rather than
+    -- shrink it.  Read every frame, so turning the dial moves the badge as
+    -- you turn it.
+    { key = "badge_scale", label = "BADGE SIZE %", type = "number",
+      default = 60, min = 30, max = 100, step = 5 },
+    { key = "badge_inset", label = "BADGE INSET", type = "number",
+      default = 2, min = 0, max = 16, step = 1 },
+    -- The first time you meet a species, open its page for you once the
+    -- intro text is done and you have control.  "First time" is tracked by
+    -- this mod, not read off the dex, because by the time any mod can see a
+    -- wild battle the engine has already marked the species seen --
+    -- markSeen runs inside BattleState.newWild, before battle.started.
+    { key = "auto_open", label = "AUTO DEX ON NEW", type = "toggle",
+      default = true },
   })
 
   -- battle.started hands over the live BattleState.  Nothing else in this
   -- file knows how to find one, which is the point: no private require, no
   -- engine table reached behind the loader's back.
   local battle = nil
-  mod.events:on("battle.started", function(ev) battle = ev.battle end)
-  mod.events:on("battle.ended", function() battle = nil end)
+
+  -- ------- "have I met this one before?"
+  --
+  -- The dex cannot answer this by the time we are allowed to ask.  markSeen
+  -- runs inside BattleState.newWild (BattleState.lua:618), well before
+  -- enter() emits battle.started, so save.pokedex.seen[species] is already
+  -- true for the mon standing in front of you -- a naive check would be
+  -- false every single time and the toggle would look broken rather than
+  -- quiet.  So the mod keeps its own roll in its own save bucket.
+  --
+  -- It is seeded from the dex on the first battle after install, minus the
+  -- current species: everything you had seen BEFORE this battle, which is
+  -- exactly the truth markSeen just overwrote.  Without that subtraction the
+  -- very first encounter after installing would seed itself as already-met
+  -- and never fire.
+  local function met(game, species)
+    local roll = mod.save:get("met")
+    if type(roll) ~= "table" then
+      roll = {}
+      local dex = game and game.save and game.save.pokedex
+      for id in pairs(dex and dex.seen or {}) do
+        if id ~= species then roll[id] = true end
+      end
+      mod.save:set("met", roll)
+    end
+    return roll
+  end
+
+  -- armed at battle.started, spent at the first prompt: the auto-open has to
+  -- wait for the intro text to finish, and "the player has control" is the
+  -- same moment the hotkey becomes legal
+  local pendingAuto = false
+
+  mod.events:on("battle.started", function(ev)
+    battle = ev.battle
+    pendingAuto = false
+    local species = ev.species
+      or (battle and battle.enemy and battle.enemy.mon
+          and battle.enemy.mon.species)
+    if not species then return end
+    local game = battle and battle.game
+    local roll = met(game, species)
+    -- record the meeting whatever the toggle says, so switching it on later
+    -- does not replay every species you have already fought
+    if not roll[species] then
+      pendingAuto = mod.options:get("auto_open") == true
+      roll[species] = true
+      mod.save:set("met", roll)
+    end
+  end)
+
+  mod.events:on("battle.ended", function()
+    battle = nil
+    pendingAuto = false
+  end)
 
   local function openEntry(game, species)
     if not species then return end
@@ -100,8 +169,23 @@ return function(mod)
 
   mod.hooks:wrap("input.step", function(nextFn, game, dt)
     local result = nextFn(game, dt)
+    if not battle then return result end
+
+    -- The auto-open rides the same guards as the hotkey -- foeSpecies is
+    -- what refuses link, ghost, mid-turn and a screen already on top -- so
+    -- it can only land at the prompt, never over the intro text it is
+    -- waiting for.
+    if pendingAuto then
+      local species = foeSpecies(game)
+      if species then
+        pendingAuto = false
+        openEntry(game, species)
+        return result
+      end
+    end
+
     local button = mod.options:get("foe_button")
-    if button == "off" or not battle then return result end
+    if button == "off" then return result end
     if not (game and game.input and game.input.wasPressed) then return result end
     -- input.step runs before Input:step promotes queued edges (Game.lua), so
     -- this reads the previous tick's edge: the page opens one fixed step
@@ -153,13 +237,20 @@ return function(mod)
 
   -- Inside the arena the badge is drawn magnified -- around 6.8x on a 1080p
   -- handheld -- so shrinking it is a matter of giving some of that
-  -- magnification back, NOT of resampling anything.  At 0.6 every source
+  -- magnification back, NOT of resampling anything.  At 60% every source
   -- pixel still covers about four screen pixels, so the sprite and the font
   -- stay pixel-exact; they simply take less room.  The flat layouts get no
   -- multiplier because there is none to give back: they draw one GB pixel
-  -- to one GB pixel, and anything under 1.0 there would genuinely destroy
+  -- to one GB pixel, and anything under 100 there would genuinely destroy
   -- the art.  They get the shorter label instead.
-  local ARENA_SCALE = 0.6
+  local function arenaScale()
+    local pct = tonumber(mod.options:get("badge_scale")) or 60
+    return math.max(0.3, math.min(1, pct / 100))
+  end
+
+  local function inset()
+    return tonumber(mod.options:get("badge_inset")) or PAD
+  end
 
   -- Resolved to horizontal runs once at load: 14 rectangles a frame instead
   -- of 64, which is the difference that matters on the LOW performance tier.
@@ -355,8 +446,9 @@ return function(mod)
       local s = shot.scale
       -- the badge's own magnification; the margin keeps the arena's, so the
       -- badge sits the same distance off the edge as it did at full size
-      local eff = s * ARENA_SCALE
+      local eff = s * arenaScale()
       local bw, bh = boxW * eff, boxH * eff
+      local pad = inset()
       -- All four edges are the canvas's, not the Game Boy frame's.  The
       -- engine's own HUD panels are frame-relative vertically (their rects
       -- are shot.ly + y * s) because they belong to the battle's layout --
@@ -367,9 +459,9 @@ return function(mod)
       -- using shot.ph.  Same corner logic on every side now.
       local ox, oy
       if bottomLeft then
-        ox, oy = PAD * s, shot.ph - bh - PAD * s
+        ox, oy = pad * s, shot.ph - bh - pad * s
       else
-        ox, oy = shot.pw - bw - PAD * s, PAD * s
+        ox, oy = shot.pw - bw - pad * s, pad * s
       end
       g.setCanvas(shot.canvas)
       -- the same blend OverworldBattle sets before its own panel run
@@ -387,9 +479,9 @@ return function(mod)
         w, h = uw or w, uh or h
       end
       if bottomLeft then
-        g.translate(PAD, h - boxH - PAD)
+        g.translate(inset(), h - boxH - inset())
       else
-        g.translate(w - boxW - PAD, PAD)
+        g.translate(w - boxW - inset(), inset())
       end
       drawBadge(theBattle, label, iconW, iconH, true)
     end

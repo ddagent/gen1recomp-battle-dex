@@ -144,6 +144,108 @@ do
   endBattle(game)
 end
 
+-- ------- auto-open on a species you have not met
+--
+-- The dex cannot answer "is this new?" by the time a mod may ask: markSeen
+-- runs inside BattleState.newWild, before enter() emits battle.started, so
+-- save.pokedex.seen is already true for the mon in front of you.  These
+-- cases pin the workaround, because if the seeding regresses the feature
+-- does not crash -- it just silently never fires, which is far worse.
+
+local SEEN_BEFORE = T.fixtures.ids.species[2]   -- FIXMON_B
+local BRAND_NEW = T.fixtures.ids.species[3]     -- FIXMON_C
+
+-- one emit, not two: the shared startBattle helper already fires
+-- battle.started, and a second emit would find the species recorded by the
+-- first and look like the feature declining
+local function startDexBattle(game, species, phase)
+  local b = newBattle({ phase = phase or "menu",
+                        enemy = { mon = { species = species, level = 5 } } })
+  b.game = game
+  game.stack:push(b)
+  Runtime.emit("battle.started", { battle = b, species = species })
+  return b
+end
+
+local function dexGame(pressed)
+  local game = newGame(pressed)
+  -- the engine has already marked BOTH seen by battle.started; one of them
+  -- was genuinely seen before, the other only because markSeen just ran
+  game.save.pokedex = { seen = { [SEEN_BEFORE] = true, [BRAND_NEW] = true },
+                        owned = {} }
+  return game
+end
+
+do
+  run.loader.modSave.battle_dex = nil   -- a fresh install
+  local game = dexGame()
+  local b = startDexBattle(game, BRAND_NEW)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before + 1, "a species you have not met opens itself")
+  T.eq(pushed[#pushed].species, BRAND_NEW, "and it is that species' page")
+
+  -- the seeding must not have counted the current foe as already met, which
+  -- is the whole point of subtracting it
+  local roll = run.loader.modSave.battle_dex.met
+  T.eq(roll[SEEN_BEFORE], true, "species seen before install are seeded as met")
+  T.eq(roll[BRAND_NEW], true, "and the one just met is recorded")
+
+  table.remove(game.stack.states)
+  endBattle(game)
+end
+
+do
+  -- second encounter with the same species: quiet
+  local game = dexGame()
+  local b = startDexBattle(game, BRAND_NEW)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before, "meeting it again does not reopen the page")
+  endBattle(game)
+end
+
+do
+  -- a species already in the dex before install never auto-opens
+  local game = dexGame()
+  local b = startDexBattle(game, SEEN_BEFORE)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before, "a species you already knew stays quiet")
+  endBattle(game)
+end
+
+do
+  -- with the toggle off nothing opens, but the meeting is still recorded so
+  -- switching it on later does not replay the whole dex
+  run.loader.modSave.battle_dex = nil
+  run.loader.modOptions.battle_dex = { auto_open = false }
+  local game = dexGame()
+  local b = startDexBattle(game, BRAND_NEW)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before, "AUTO DEX ON NEW off means it stays shut")
+  T.eq(run.loader.modSave.battle_dex.met[BRAND_NEW], true,
+    "but the meeting is still recorded")
+  endBattle(game)
+  run.loader.modOptions.battle_dex = {}
+end
+
+do
+  -- it must wait for the prompt, not land over the intro text
+  run.loader.modSave.battle_dex = nil
+  local game = dexGame()
+  local b = startDexBattle(game, BRAND_NEW, "messages")
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before, "it holds while the appeared text is still up")
+  b.phase = "menu"
+  step(game)
+  T.eq(#pushed, before + 1, "and opens once the player has control")
+  endBattle(game)
+  run.loader.modSave.battle_dex = nil
+end
+
 -- ------- door 2: the party submenu row
 
 local function submenu(items, ctx)

@@ -3,6 +3,26 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.7.0
+
+### Added
+
+- `AUTO DEX ON NEW` (on by default): the first time you meet a species, its
+  page opens itself once the intro text is done and you have control. It
+  rides the same guards as the hotkey, so it never lands over the appeared
+  text, in a link battle, or against the GHOST.
+- `BADGE SIZE %` (30-100, default 60) and `BADGE INSET` (0-16, default 2) —
+  both read every frame, so the badge moves as you turn the dial.
+
+### Note
+
+"First time" is tracked by this mod in its own save bucket, not read off the
+POKeDEX. `markSeen` runs inside `BattleState.newWild`, before `enter()` emits
+`battle.started`, so by the time any mod can look at a wild battle the
+species is already flagged seen -- a naive check would be false every time.
+The roll is seeded from your dex on the first battle after install, minus
+that battle's own species.
+
 ## 1.6.0
 
 ### Fixed
