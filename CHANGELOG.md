@@ -3,6 +3,20 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.5.0
+
+### Changed
+
+- The badge is smaller. The label is abbreviated (`SELECT` -> `SEL`), which
+  takes the box from 11 tiles to 8, and inside the arena the badge is drawn
+  at 0.6 of the arena's own magnification.
+- Nothing is resampled to achieve that. The arena already draws the badge at
+  roughly 6.8x on a 1080p handheld, so 0.6 simply gives some of that back;
+  every source pixel still covers about four screen pixels and the sprite and
+  font stay pixel-exact. The flat layouts get no multiplier because they draw
+  one GB pixel to one GB pixel and have none to give back — anything under
+  1.0 there would destroy the art. They get the shorter label alone.
+
 ## 1.4.0
 
 ### Fixed

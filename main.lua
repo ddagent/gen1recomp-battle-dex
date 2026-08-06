@@ -145,6 +145,22 @@ return function(mod)
   local ICON_W, ICON_H = 10, 10
   local GLYPH_W, GAP, PAD = 8, 2, 2
 
+  -- Three glyphs rather than the whole word: the label is a reminder, not a
+  -- sentence, and every character costs a full 8px cell in a box that is
+  -- already rounded up to whole tiles.  SELECT -> SEL takes the box from 11
+  -- tiles to 8.
+  local SHORT = { select = "SEL", start = "STA" }
+
+  -- Inside the arena the badge is drawn magnified -- around 6.8x on a 1080p
+  -- handheld -- so shrinking it is a matter of giving some of that
+  -- magnification back, NOT of resampling anything.  At 0.6 every source
+  -- pixel still covers about four screen pixels, so the sprite and the font
+  -- stay pixel-exact; they simply take less room.  The flat layouts get no
+  -- multiplier because there is none to give back: they draw one GB pixel
+  -- to one GB pixel, and anything under 1.0 there would genuinely destroy
+  -- the art.  They get the shorter label instead.
+  local ARENA_SCALE = 0.6
+
   -- Resolved to horizontal runs once at load: 14 rectangles a frame instead
   -- of 64, which is the difference that matters on the LOW performance tier.
   local ICON_SPANS = {}
@@ -310,7 +326,7 @@ return function(mod)
       return result
     end
 
-    local label = button == "start" and "START" or "SELECT"
+    local label = SHORT[button] or "SEL"
     local art = dexSprite(theBattle)
     local iconW = art and SPRITE_W or ICON_W
     local iconH = art and SPRITE_H or ICON_H
@@ -337,20 +353,24 @@ return function(mod)
 
     if shot then
       local s = shot.scale
+      -- the badge's own magnification; the margin keeps the arena's, so the
+      -- badge sits the same distance off the edge as it did at full size
+      local eff = s * ARENA_SCALE
+      local bw, bh = boxW * eff, boxH * eff
       local ox, oy
       if bottomLeft then
-        ox, oy = PAD * s, shot.ph - (boxH + PAD) * s
+        ox, oy = PAD * s, shot.ph - bh - PAD * s
       else
-        ox, oy = shot.pw - (boxW + PAD) * s, shot.ly + PAD * s
+        ox, oy = shot.pw - bw - PAD * s, shot.ly + PAD * s
       end
       g.setCanvas(shot.canvas)
       -- the same blend OverworldBattle sets before its own panel run
       if g.setBlendMode then g.setBlendMode("alpha") end
       -- panel draws in the target's own coordinates, so it goes down BEFORE
       -- the transform, with the rect in world pixels
-      local glassed = arenaGlass(ox, oy, boxW * s, boxH * s, shot)
+      local glassed = arenaGlass(ox, oy, bw, bh, shot)
       g.translate(ox, oy)
-      g.scale(s, s)
+      g.scale(eff, eff)
       drawBadge(theBattle, label, iconW, iconH, false, glassed)
     else
       local w, h = 160, 144

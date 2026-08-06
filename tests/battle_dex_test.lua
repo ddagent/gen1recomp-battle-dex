@@ -264,17 +264,25 @@ local function overlay(b)
   return drawn[1]
 end
 
--- Boxes are tile-aligned now (Font.drawBox), so the badge is measured in
--- whole tiles.  The fixture has no SPRITE_POKEDEX, so these exercise the
--- drawn-icon fallback: 10 + 2 + 48 = 60px of content -> 8 interior tiles
--- plus a border tile each side = 10 tiles = 80px.
-local BOX_W, BOX_H = 80, 32
+-- Boxes are tile-aligned (Font.drawBox), so the badge is measured in whole
+-- tiles.  The fixture has no SPRITE_POKEDEX, so these exercise the drawn-icon
+-- fallback: 10 + 2 + 3 glyphs (24) = 36px of content -> 5 interior tiles plus
+-- a border tile each side = 7 tiles = 56px.
+local BOX_W, BOX_H = 56, 32
+-- the arena hands some of its magnification back rather than resampling
+local ARENA_SCALE = 0.6
+
+-- geometry is fractional once the badge scale is in play
+local function near(a, b, what)
+  T.check(a and math.abs(a - b) < 0.001,
+    ("%s (got %s, want %s)"):format(what, tostring(a), tostring(b)))
+end
 
 do
   setOptions({})
   local label = overlay(newBattle())
   T.check(label ~= nil, "the badge draws at the battle prompt")
-  T.eq(label.text, "SELECT", "the badge names the configured button")
+  T.eq(label.text, "SEL", "the badge names the configured button, abbreviated")
   T.eq(plate(BOX_W).alpha, 1, "outside the arena the plate is opaque")
   T.eq(origin.x, 160 - BOX_W - 2, "TOP RIGHT is pinned to the surface's right edge")
   T.check(origin.x + BOX_W <= 160, "and the badge stays inside the surface")
@@ -311,7 +319,7 @@ do
   setOptions({})
   local label = overlay(voxelBattle())
   T.check(label ~= nil, "the badge still draws inside the arena")
-  T.eq(scaled, 4, "it is scaled by the arena's GB-to-window scale")
+  near(scaled, 4 * ARENA_SCALE, "it is scaled below the arena's own magnification")
   T.eq(canvases[1], "CANVAS", "and drawn into the arena's own canvas")
   local wash = plate(BOX_W)
   T.check(wash ~= nil, "the arena still gets a backing so the glyphs read")
@@ -319,7 +327,8 @@ do
     "but translucent: an opaque white is what withoutBoxFill strips")
   T.check(wash.alpha > 0.4, "and opaque enough to earn contrast over dark ground")
   -- pinned to pw like the player HUD, not to the 160-wide frame
-  T.eq(origin.x, 1920 - (BOX_W + 2) * 4, "TOP RIGHT pins to the true screen edge")
+  near(origin.x, 1920 - BOX_W * 4 * ARENA_SCALE - 2 * 4,
+    "TOP RIGHT pins to the true screen edge")
   T.check(origin.x > 460, "which is right of where the GB frame ends")
   T.eq(origin.y, 60 + 2 * 4, "and hangs off the frame's top edge")
 
@@ -341,7 +350,7 @@ end
 
 do
   setOptions({ foe_button = "start" })
-  T.eq(overlay(newBattle()).text, "START", "the badge tracks the button choice")
+  T.eq(overlay(newBattle()).text, "STA", "the badge tracks the button choice")
 
   setOptions({ foe_button = "off" })
   T.eq(overlay(newBattle()), nil, "no hotkey, no badge advertising it")
@@ -426,8 +435,9 @@ do
   T.eq(calls[1].box, b.dramaticShapeShot, "and the shot as the box")
   -- same origin the badge translates to, sized in world pixels
   T.eq(calls[1].rect[1], origin.x, "the rect starts where the badge does")
-  T.eq(calls[1].rect[3], BOX_W * 4, "and is the badge's own width, scaled")
-  T.eq(plate(BOX_W * 4), nil,
+  near(calls[1].rect[3], BOX_W * 4 * ARENA_SCALE,
+    "and is the badge's own width at the reduced scale")
+  T.eq(plate(BOX_W), nil,
     "no fill of ours over their glass -- that is what made it read opaque")
 
   -- when the frost buffer is not up yet their panel declines, and the
@@ -479,8 +489,8 @@ do
   T.eq(drawnImages[1].path, "cache/sprites/pokedex.png",
     "and it is SPRITE_POKEDEX out of the player's own cache")
   -- 16px sprite widens the badge from 60 to 66, so the right pin moves left
-  -- 16 + 2 + 48 = 66px of content -> 9 interior tiles + 2 border = 88
-  T.eq(origin.x, 160 - 88 - 2,
+  -- 16 + 2 + 24 = 42px of content -> 6 interior tiles + 2 border = 64
+  T.eq(origin.x, 160 - 64 - 2,
     "the badge widens to the sprite and stays pinned right")
   T.eq(drawn[1].y, 8 + 4, "8px glyphs are centred against the 16px sprite")
 
