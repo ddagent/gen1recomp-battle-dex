@@ -192,39 +192,95 @@ return function(mod)
     return sprite
   end
 
-  -- Inside the voxel arena the engine's own boxes lose their fill --
-  -- OverworldBattle.withoutBoxFill drops every opaque white rectangle so the
-  -- diorama shows through -- and an opaque plate here would read as a
-  -- sticker pasted over the scene.  But bare black glyphs over a dark wall
-  -- are unreadable, which is why DRAMATIC_SHAPE's own HUD panels are not
-  -- bare either: BattleHud lays a blurred capture at 0.55 under a white
-  -- wash at 0.26, and its comment is explicit that "the panel's tint is what
-  -- earns it its contrast".  One translucent wash reaches the same place
-  -- without reaching into another mod for its frost canvas: still glass,
-  -- still shows the scene, still legible over the worst ground.
-  local ARENA_WASH = 0.72
+  -- The chrome is the engine's own box, not a rectangle of our own:
+  -- Font.drawBox paints a white interior and then the four corners and two
+  -- runs from Font.BORDER, which src/ui/Theme.lua rebuilds from
+  -- field.theme.border.  Drawing it ourselves would have frozen this badge
+  -- to the default border while a theme mod restyled every other box in the
+  -- game around it.  Boxes are tile-aligned, so the badge is sized in tiles
+  -- and the interior starts one tile in.
+  local TILE = 8
+
+  local function boxTiles(iconW, iconH, label)
+    local content = iconW + GAP + #label * GLYPH_W
+    return math.ceil(content / TILE) + 2, math.ceil(iconH / TILE) + 2
+  end
+
+  -- The arena's glass, on the arena's own numbers.  BattleHud lays a blurred
+  -- capture at FROST under a white wash at TINT, and OverworldBattle's own
+  -- comment says why: "The HUDs got frosted panels because black glyphs on
+  -- grass are not readable."  Two stacked translucent layers cover as much
+  -- as one at 1-(1-a)(1-b), so that is the single wash equivalent to their
+  -- pair -- and it tracks their tuning instead of a number we made up.
+  local FALLBACK_WASH = 0.67
+  local wash, washTried = nil, false
+
+  local function arenaWash()
+    if washTried then return wash end
+    washTried = true
+    wash = FALLBACK_WASH
+    local handle = type(mod.find) == "function" and mod.find("DRAMATIC_SHAPE")
+    local lib = handle and handle.exports and handle.exports.lib
+    if not lib or type(lib.require) ~= "function" then return wash end
+    local ok, hud = pcall(lib.require, "BattleHud")
+    if not ok or type(hud) ~= "table" then return wash end
+    local frost, tint = tonumber(hud.FROST), tonumber(hud.TINT)
+    if frost and tint then
+      wash = 1 - (1 - frost) * (1 - tint)
+      mod.log:info("glass matched to DRAMATIC_SHAPE: frost %.2f tint %.2f -> %.2f",
+                   frost, tint, wash)
+    end
+    return wash
+  end
+
+  -- Font.drawBox's interior is an opaque white fill, which is exactly the
+  -- signature OverworldBattle.withoutBoxFill strips so the diorama shows
+  -- through every other box.  Inside the arena we do the same to ours and
+  -- lay the glass in its place; outside, the interior IS the plate.
+  local function boxWithoutFill(fn)
+    local g = love.graphics
+    local rectangle = g.rectangle
+    g.rectangle = function(mode, ...)
+      if mode == "fill" then
+        local r, gr, b, a = g.getColor()
+        if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99 then return end
+      end
+      return rectangle(mode, ...)
+    end
+    local ok, err = pcall(fn)
+    g.rectangle = rectangle
+    if not ok then mod.log:error("badge chrome failed: %s", tostring(err)) end
+  end
 
   -- Draws at the origin in GB pixels; the caller owns the transform.
   local function drawBadge(theBattle, label, iconW, iconH, solid)
     local g = love.graphics
-    local w = iconW + GAP + #label * GLYPH_W
-    g.setColor(1, 1, 1, solid and 1 or ARENA_WASH)
-    g.rectangle("fill", -PAD, -PAD, w + PAD * 2, iconH + PAD * 2)
-    g.setColor(0, 0, 0, 1)
-    g.rectangle("line", -PAD + 0.5, -PAD + 0.5,
-                w + PAD * 2 - 1, iconH + PAD * 2 - 1)
+    local Font = mod.ui.Font
+    local tw, th = boxTiles(iconW, iconH, label)
+
+    if solid then
+      Font.drawBox(0, 0, tw, th)
+    else
+      g.setColor(1, 1, 1, arenaWash())
+      g.rectangle("fill", 0, 0, tw * TILE, th * TILE)
+      g.setColor(1, 1, 1, 1)
+      boxWithoutFill(function() Font.drawBox(0, 0, tw, th) end)
+    end
+
+    g.setColor(1, 1, 1, 1)
     local art = dexSprite(theBattle)
     if art then
-      g.setColor(1, 1, 1, 1)
-      g.draw(art.image, art.quad, 0, 0)
-      g.setColor(0, 0, 0, 1)
+      g.draw(art.image, art.quad, TILE, TILE)
     else
+      g.setColor(0, 0, 0, 1)
       for _, span in ipairs(ICON_SPANS) do
-        g.rectangle("fill", span.x, span.y, span.w, 1)
+        g.rectangle("fill", TILE + span.x, TILE + span.y, span.w, 1)
       end
     end
+    g.setColor(0, 0, 0, 1)
     -- glyphs are 8 tall; centre them against whichever icon we drew
-    mod.ui.Font.draw(label, iconW + GAP, math.floor((iconH - 8) / 2))
+    Font.draw(label, TILE + iconW + GAP,
+              TILE + math.floor((iconH - 8) / 2))
   end
 
   mod.hooks:wrap("battle.overlay", function(nextFn, theBattle)
@@ -243,7 +299,8 @@ return function(mod)
     local art = dexSprite(theBattle)
     local iconW = art and SPRITE_W or ICON_W
     local iconH = art and SPRITE_H or ICON_H
-    local badgeW = iconW + GAP + #label * GLYPH_W
+    local tw, th = boxTiles(iconW, iconH, label)
+    local boxW, boxH = tw * TILE, th * TILE
     local bottomLeft = mod.options:get("hint_pos") == "bottom_left"
 
     -- DRAMATIC_SHAPE publishes the arena's geometry on the battle it is
@@ -267,9 +324,9 @@ return function(mod)
       local s = shot.scale
       g.setCanvas(shot.canvas)
       if bottomLeft then
-        g.translate(PAD * 2 * s, shot.ph - (iconH + PAD * 3) * s)
+        g.translate(PAD * s, shot.ph - (boxH + PAD) * s)
       else
-        g.translate(shot.pw - (badgeW + PAD * 2) * s, shot.ly + PAD * 2 * s)
+        g.translate(shot.pw - (boxW + PAD) * s, shot.ly + PAD * s)
       end
       g.scale(s, s)
       drawBadge(theBattle, label, iconW, iconH, false)
@@ -280,10 +337,9 @@ return function(mod)
         w, h = uw or w, uh or h
       end
       if bottomLeft then
-        -- the menu's own text row, so the badge sits on the FIGHT baseline
-        g.translate(PAD + 2, h - 32)
+        g.translate(PAD, h - boxH - PAD)
       else
-        g.translate(w - badgeW - PAD - 2, PAD + 2)
+        g.translate(w - boxW - PAD, PAD)
       end
       drawBadge(theBattle, label, iconW, iconH, true)
     end

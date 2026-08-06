@@ -226,7 +226,12 @@ Font.draw = function(text, x, y)
 end
 -- the icon's own spans are fills too, so record geometry: the plate is the
 -- only fill that spans the whole badge
-love.graphics.setColor = function(_, _, _, a) alpha = a or 1 end
+-- pass through: boxWithoutFill reads getColor() to decide what to strip,
+-- so a spy that only records would break the thing under test
+love.graphics.setColor = function(r, g, b, a)
+  alpha = a or 1
+  realSetColor(r, g, b, a)
+end
 love.graphics.rectangle = function(mode, x, y, w, h)
   if mode == "fill" then
     fills[#fills + 1] = { x = x, y = y, w = w, h = h, alpha = alpha }
@@ -259,20 +264,22 @@ local function overlay(b)
   return drawn[1]
 end
 
--- the fixture has no SPRITE_POKEDEX, so these exercise the drawn-icon
--- fallback: 10px icon + 2px gap + 6 glyphs = 60 wide
-local BADGE_W = 10 + 2 + 6 * 8
+-- Boxes are tile-aligned now (Font.drawBox), so the badge is measured in
+-- whole tiles.  The fixture has no SPRITE_POKEDEX, so these exercise the
+-- drawn-icon fallback: 10 + 2 + 48 = 60px of content -> 8 interior tiles
+-- plus a border tile each side = 10 tiles = 80px.
+local BOX_W, BOX_H = 80, 32
 
 do
   setOptions({})
   local label = overlay(newBattle())
   T.check(label ~= nil, "the badge draws at the battle prompt")
   T.eq(label.text, "SELECT", "the badge names the configured button")
-  T.eq(plate(BADGE_W).alpha, 1, "outside the arena the plate is opaque")
-  T.eq(origin.x, 160 - BADGE_W - 4, "TOP RIGHT is pinned to the surface's right edge")
-  T.check(origin.x + BADGE_W <= 160, "and the badge stays inside the surface")
+  T.eq(plate(BOX_W).alpha, 1, "outside the arena the plate is opaque")
+  T.eq(origin.x, 160 - BOX_W - 2, "TOP RIGHT is pinned to the surface's right edge")
+  T.check(origin.x + BOX_W <= 160, "and the badge stays inside the surface")
   T.check(origin.y < 72, "TOP RIGHT puts it in the upper half")
-  T.eq(label.x, 12, "the label follows the icon within the badge")
+  T.eq(label.x, 8 + 10 + 2, "the label follows the icon inside the border tile")
 
   local before = origin.x
   overlay(newBattle({ surface = { 304, 144 } }))
@@ -283,7 +290,7 @@ do
   setOptions({ hint_pos = "bottom_left" })
   overlay(newBattle())
   T.check(origin.x < 24, "BOTTOM LEFT hugs the left edge")
-  T.eq(origin.y, 112, "and sits on the OG menu's own text row")
+  T.eq(origin.y, 144 - BOX_H - 2, "and sits against the bottom edge")
 end
 
 -- ------- the voxel arena (DRAMATIC_SHAPE)
@@ -306,15 +313,15 @@ do
   T.check(label ~= nil, "the badge still draws inside the arena")
   T.eq(scaled, 4, "it is scaled by the arena's GB-to-window scale")
   T.eq(canvases[1], "CANVAS", "and drawn into the arena's own canvas")
-  local wash = plate(BADGE_W)
+  local wash = plate(BOX_W)
   T.check(wash ~= nil, "the arena still gets a backing so the glyphs read")
   T.check(wash.alpha < 1,
     "but translucent: an opaque white is what withoutBoxFill strips")
   T.check(wash.alpha > 0.4, "and opaque enough to earn contrast over dark ground")
   -- pinned to pw like the player HUD, not to the 160-wide frame
-  T.eq(origin.x, 1920 - (BADGE_W + 4) * 4, "TOP RIGHT pins to the true screen edge")
+  T.eq(origin.x, 1920 - (BOX_W + 2) * 4, "TOP RIGHT pins to the true screen edge")
   T.check(origin.x > 460, "which is right of where the GB frame ends")
-  T.eq(origin.y, 60 + 4 * 4, "and hangs off the frame's top edge")
+  T.eq(origin.y, 60 + 2 * 4, "and hangs off the frame's top edge")
 
   setOptions({ hint_pos = "bottom_left" })
   overlay(voxelBattle())
@@ -328,7 +335,7 @@ do
   local partial = newBattle()
   partial.dramaticShapeShot = { canvas = "CANVAS", scale = 4 }  -- no pw/lx/ly
   overlay(partial)
-  T.eq(origin.x, 160 - BADGE_W - 4, "an incomplete shot falls back to the GB frame")
+  T.eq(origin.x, 160 - BOX_W - 2, "an incomplete shot falls back to the GB frame")
   T.eq(canvases[1], "NONE", "and never redirects the canvas")
 end
 
@@ -402,9 +409,10 @@ do
   T.eq(drawnImages[1].path, "cache/sprites/pokedex.png",
     "and it is SPRITE_POKEDEX out of the player's own cache")
   -- 16px sprite widens the badge from 60 to 66, so the right pin moves left
-  T.eq(origin.x, 160 - (16 + 2 + 6 * 8) - 4,
+  -- 16 + 2 + 48 = 66px of content -> 9 interior tiles + 2 border = 88
+  T.eq(origin.x, 160 - 88 - 2,
     "the badge widens to the sprite and stays pinned right")
-  T.eq(drawn[1].y, 4, "8px glyphs are centred against the 16px sprite")
+  T.eq(drawn[1].y, 8 + 4, "8px glyphs are centred against the 16px sprite")
 
   love.graphics.draw, love.graphics.newImage = realDraw, realNewImage
   run2.release()
