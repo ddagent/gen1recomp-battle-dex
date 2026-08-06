@@ -115,15 +115,21 @@ return function(mod)
   -- ------- the badge
   --
   -- battle.overlay is draw-only and fires at the end of the battle's own
-  -- draw in both layouts, so the badge is measured in battle-surface pixels
-  -- rather than window pixels: it scales with the game, survives every zoom
-  -- and BATTLE SIZE setting, and cannot drift away from the frame.
+  -- draw, so everything below is measured in GB pixels and placed by a
+  -- transform.  One drawing routine, three frames of reference.
 
-  -- 10x10 1-bit dex: the big round indicator light, its small companion,
-  -- and the screen below.  Authored here instead of shipped as a PNG so the
-  -- package carries no art file and provably nothing derived from a ROM.
-  -- 10 wide rather than 8 on purpose: at 8x8 a full device outline eats
-  -- nearly half the pixels and the whole thing reads as a solid block.
+  -- The icon is the POKeDEX as it sits on OAK's table -- SPRITE_POKEDEX,
+  -- the same overworld sprite the lab draws.  It is read from the player's
+  -- own imported cache at draw time, never bundled, so the package still
+  -- ships no ROM-derived bytes.  A cache without it (or a mod that removed
+  -- it) falls back to the hand-drawn glyph below rather than losing the
+  -- badge.
+  local SPRITE_ID = "SPRITE_POKEDEX"
+  local SPRITE_W, SPRITE_H = 16, 16
+
+  -- 10x10 1-bit stand-in: round indicator light, small companion, screen.
+  -- 10 wide rather than 8 because at 8x8 a full device outline eats nearly
+  -- half the pixels and the whole thing reads as a solid block.
   local ICON = {
     ".###......",
     "#...#.##..",
@@ -138,8 +144,6 @@ return function(mod)
   }
   local ICON_W, ICON_H = 10, 10
   local GLYPH_W, GAP, PAD = 8, 2, 2
-  -- the font's glyphs are 8 tall against a 10-tall icon; centre them
-  local TEXT_DY = 1
 
   -- Resolved to horizontal runs once at load: 14 rectangles a frame instead
   -- of 64, which is the difference that matters on the LOW performance tier.
@@ -158,17 +162,69 @@ return function(mod)
     end
   end
 
-  local function badgeOrigin(theBattle, badgeW)
-    local w, h = 160, 144
-    if theBattle.uiSize then
-      local uw, uh = theBattle:uiSize()
-      w, h = uw or w, uh or h
+  -- The cache path is stable for a session but the image is not ours, so it
+  -- is resolved once and held rather than reloaded 60 times a second.
+  local sprite = nil          -- { image, quad } once resolved
+  local spriteTried = false
+
+  local function dexSprite(theBattle)
+    if spriteTried then return sprite end
+    spriteTried = true
+    local data = theBattle.game and theBattle.game.data
+    local def = data and data.sprites and data.sprites[SPRITE_ID]
+    local path = def and def.image
+    if not path then
+      mod.log:info("%s is not in this cache; using the drawn icon", SPRITE_ID)
+      return nil
     end
-    if mod.options:get("hint_pos") == "bottom_left" then
-      -- the OG menu's own text row, so the badge sits on the FIGHT baseline
-      return PAD + 2, h - 32
+    local ok, image = pcall(love.graphics.newImage, path)
+    if not ok or not image then
+      mod.log:warn("could not load %s (%s); using the drawn icon",
+                   SPRITE_ID, tostring(image))
+      return nil
     end
-    return w - badgeW - PAD - 2, PAD + 2
+    -- overworld sheets stack their frames vertically; the resting frame is
+    -- the first one, and a 16x16 quad off the top-left is it whatever else
+    -- the sheet carries
+    local iw, ih = image:getDimensions()
+    sprite = { image = image,
+               quad = love.graphics.newQuad(0, 0, SPRITE_W, SPRITE_H, iw, ih) }
+    return sprite
+  end
+
+  -- Inside the voxel arena the engine's own boxes lose their fill --
+  -- OverworldBattle.withoutBoxFill drops every opaque white rectangle so the
+  -- diorama shows through -- and an opaque plate here would read as a
+  -- sticker pasted over the scene.  But bare black glyphs over a dark wall
+  -- are unreadable, which is why DRAMATIC_SHAPE's own HUD panels are not
+  -- bare either: BattleHud lays a blurred capture at 0.55 under a white
+  -- wash at 0.26, and its comment is explicit that "the panel's tint is what
+  -- earns it its contrast".  One translucent wash reaches the same place
+  -- without reaching into another mod for its frost canvas: still glass,
+  -- still shows the scene, still legible over the worst ground.
+  local ARENA_WASH = 0.72
+
+  -- Draws at the origin in GB pixels; the caller owns the transform.
+  local function drawBadge(theBattle, label, iconW, iconH, solid)
+    local g = love.graphics
+    local w = iconW + GAP + #label * GLYPH_W
+    g.setColor(1, 1, 1, solid and 1 or ARENA_WASH)
+    g.rectangle("fill", -PAD, -PAD, w + PAD * 2, iconH + PAD * 2)
+    g.setColor(0, 0, 0, 1)
+    g.rectangle("line", -PAD + 0.5, -PAD + 0.5,
+                w + PAD * 2 - 1, iconH + PAD * 2 - 1)
+    local art = dexSprite(theBattle)
+    if art then
+      g.setColor(1, 1, 1, 1)
+      g.draw(art.image, art.quad, 0, 0)
+      g.setColor(0, 0, 0, 1)
+    else
+      for _, span in ipairs(ICON_SPANS) do
+        g.rectangle("fill", span.x, span.y, span.w, 1)
+      end
+    end
+    -- glyphs are 8 tall; centre them against whichever icon we drew
+    mod.ui.Font.draw(label, iconW + GAP, math.floor((iconH - 8) / 2))
   end
 
   mod.hooks:wrap("battle.overlay", function(nextFn, theBattle)
@@ -184,24 +240,59 @@ return function(mod)
     end
 
     local label = button == "start" and "START" or "SELECT"
-    local badgeW = ICON_W + GAP + #label * GLYPH_W
-    local x, y = badgeOrigin(theBattle, badgeW)
+    local art = dexSprite(theBattle)
+    local iconW = art and SPRITE_W or ICON_W
+    local iconH = art and SPRITE_H or ICON_H
+    local badgeW = iconW + GAP + #label * GLYPH_W
+    local bottomLeft = mod.options:get("hint_pos") == "bottom_left"
+
+    -- DRAMATIC_SHAPE publishes the arena's geometry on the battle it is
+    -- drawing: `scale` GB-pixels-to-window, `lx`/`ly` where the 160x144
+    -- frame lands, `pw`/`ph` the whole canvas.  Its own HUDs do not stay
+    -- inside the GB frame under it -- OverworldBattle pins the foe's panel
+    -- to x=0 and the player's to pw, the true screen edges -- so a badge
+    -- that stayed in the frame would float short of the corner while
+    -- everything around it went wide.  Follow the HUDs, not the frame.
+    local shot = rawget(theBattle, "dramaticShapeShot")
+    if shot and not (shot.canvas and shot.scale and shot.scale > 0
+                     and shot.pw and shot.ph and shot.lx and shot.ly) then
+      shot = nil   -- a partially-built shot is not one we can place against
+    end
 
     local g = love.graphics
-    -- paper plate first: both layouts put the foe's pic slot in the top
-    -- right, and 1-bit text over sprite pixels is unreadable without one
-    g.setColor(1, 1, 1, 1)
-    g.rectangle("fill", x - PAD, y - PAD,
-                badgeW + PAD * 2, ICON_H + PAD * 2)
-    g.setColor(0, 0, 0, 1)
-    g.rectangle("line", x - PAD + 0.5, y - PAD + 0.5,
-                badgeW + PAD * 2 - 1, ICON_H + PAD * 2 - 1)
-    for _, span in ipairs(ICON_SPANS) do
-      g.rectangle("fill", x + span.x, y + span.y, span.w, 1)
+    local prevCanvas = g.getCanvas()
+    g.push("all")
+
+    if shot then
+      local s = shot.scale
+      g.setCanvas(shot.canvas)
+      if bottomLeft then
+        g.translate(PAD * 2 * s, shot.ph - (iconH + PAD * 3) * s)
+      else
+        g.translate(shot.pw - (badgeW + PAD * 2) * s, shot.ly + PAD * 2 * s)
+      end
+      g.scale(s, s)
+      drawBadge(theBattle, label, iconW, iconH, false)
+    else
+      local w, h = 160, 144
+      if theBattle.uiSize then
+        local uw, uh = theBattle:uiSize()
+        w, h = uw or w, uh or h
+      end
+      if bottomLeft then
+        -- the menu's own text row, so the badge sits on the FIGHT baseline
+        g.translate(PAD + 2, h - 32)
+      else
+        g.translate(w - badgeW - PAD - 2, PAD + 2)
+      end
+      drawBadge(theBattle, label, iconW, iconH, true)
     end
-    mod.ui.Font.draw(label, x + ICON_W + GAP, y + TEXT_DY)
-    -- leave the state as the engine hands it over (BattleState:draw ends on
-    -- an opaque white); a dirtied color would tint whatever composites next
+
+    g.pop()
+    -- push("all") restores the canvas on every LOVE we target, but the cost
+    -- of being explicit is one call and the cost of being wrong is drawing
+    -- the rest of the frame into the arena's canvas
+    g.setCanvas(prevCanvas)
     g.setColor(1, 1, 1, 1)
     return result
   end)

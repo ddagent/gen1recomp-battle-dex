@@ -202,15 +202,50 @@ end
 -- overlay decides to draw and where, never on pixels -- the same contract
 -- the engine's own headless suites keep.
 
+-- The badge places itself with a transform now, so the interesting value is
+-- the origin it translates to, not the coordinates it hands Font.draw.  Spy
+-- on the transform and the fills; the stub's graphics calls are no-ops, so
+-- these assertions are about decisions, never pixels.
 local Font = require("src.render.Font")
 local realFontDraw = Font.draw
 local realRectangle = love.graphics.rectangle
-local drawn, rects = {}, 0
+local realTranslate = love.graphics.translate
+local realScale = love.graphics.scale
+local realSetCanvas = love.graphics.setCanvas
+local realSetColor = love.graphics.setColor
+local alpha = 1
+local drawn, fills, origin, scaled, canvases
+
+local function resetSpies()
+  drawn, fills, origin, scaled, canvases = {}, {}, nil, nil, {}
+end
+
 Font.draw = function(text, x, y)
   drawn[#drawn + 1] = { text = text, x = x, y = y }
   return #tostring(text) * 8
 end
-love.graphics.rectangle = function() rects = rects + 1 end
+-- the icon's own spans are fills too, so record geometry: the plate is the
+-- only fill that spans the whole badge
+love.graphics.setColor = function(_, _, _, a) alpha = a or 1 end
+love.graphics.rectangle = function(mode, x, y, w, h)
+  if mode == "fill" then
+    fills[#fills + 1] = { x = x, y = y, w = w, h = h, alpha = alpha }
+  end
+end
+love.graphics.translate = function(x, y) origin = { x = x, y = y } end
+love.graphics.scale = function(s) scaled = s end
+-- nil is a real value here (restoring "no canvas"), and t[#t+1] = nil is a
+-- no-op, so it would vanish from the log
+love.graphics.setCanvas = function(c) canvases[#canvases + 1] = c or "NONE" end
+
+-- the plate is the only fill spanning the whole badge; its alpha is what
+-- separates the opaque plate from the arena's glass wash
+local function plate(width)
+  for _, r in ipairs(fills) do
+    if (r.w or 0) >= width then return r end
+  end
+  return nil
+end
 
 -- options live on the loader; setting them here is what the manager's
 -- options pane does at runtime
@@ -219,32 +254,82 @@ local function setOptions(over)
 end
 
 local function overlay(b)
-  drawn, rects = {}, 0
+  resetSpies()
   Runtime.call("battle.overlay", function() end, b)
-  return drawn[1], rects
+  return drawn[1]
 end
+
+-- the fixture has no SPRITE_POKEDEX, so these exercise the drawn-icon
+-- fallback: 10px icon + 2px gap + 6 glyphs = 60 wide
+local BADGE_W = 10 + 2 + 6 * 8
 
 do
   setOptions({})
-  local label, boxes = overlay(newBattle())
+  local label = overlay(newBattle())
   T.check(label ~= nil, "the badge draws at the battle prompt")
   T.eq(label.text, "SELECT", "the badge names the configured button")
-  T.check(boxes >= 2, "it lays a plate down before the glyphs")
-  -- 10px icon + 2px gap, right-aligned in a 160-wide surface with a 2+2
-  -- margin: badge 60 wide, origin x=96, so the label starts at 108
-  T.eq(label.x, 108, "the label follows the icon")
-  T.check(label.x + 6 * 8 <= 160 - 2, "and the badge stays inside the surface")
-  T.check(label.y < 72, "TOP RIGHT puts it in the upper half")
+  T.eq(plate(BADGE_W).alpha, 1, "outside the arena the plate is opaque")
+  T.eq(origin.x, 160 - BADGE_W - 4, "TOP RIGHT is pinned to the surface's right edge")
+  T.check(origin.x + BADGE_W <= 160, "and the badge stays inside the surface")
+  T.check(origin.y < 72, "TOP RIGHT puts it in the upper half")
+  T.eq(label.x, 12, "the label follows the icon within the badge")
 
-  local wide = overlay(newBattle({ surface = { 304, 144 } }))
-  T.eq(wide.x - label.x, 144, "the wide surface shifts it by the width delta")
+  local before = origin.x
+  overlay(newBattle({ surface = { 304, 144 } }))
+  T.eq(origin.x - before, 144, "the wide surface shifts it by the width delta")
 end
 
 do
   setOptions({ hint_pos = "bottom_left" })
-  local label = overlay(newBattle())
-  T.check(label.x < 24, "BOTTOM LEFT hugs the left edge")
-  T.eq(label.y, 113, "and sits on the OG menu's own text row")
+  overlay(newBattle())
+  T.check(origin.x < 24, "BOTTOM LEFT hugs the left edge")
+  T.eq(origin.y, 112, "and sits on the OG menu's own text row")
+end
+
+-- ------- the voxel arena (DRAMATIC_SHAPE)
+--
+-- Its OverworldBattle pins the foe's HUD to x=0 and the player's to pw, the
+-- true screen edges, and drops every opaque white fill so the diorama shows
+-- through. A badge that ignored either would float short of the corner and
+-- read as a sticker, which is exactly what the device showed.
+
+local function voxelBattle(over)
+  local b = newBattle(over)
+  b.dramaticShapeShot = { canvas = "CANVAS", scale = 4,
+                          pw = 1920, ph = 1080, lx = 460, ly = 60 }
+  return b
+end
+
+do
+  setOptions({})
+  local label = overlay(voxelBattle())
+  T.check(label ~= nil, "the badge still draws inside the arena")
+  T.eq(scaled, 4, "it is scaled by the arena's GB-to-window scale")
+  T.eq(canvases[1], "CANVAS", "and drawn into the arena's own canvas")
+  local wash = plate(BADGE_W)
+  T.check(wash ~= nil, "the arena still gets a backing so the glyphs read")
+  T.check(wash.alpha < 1,
+    "but translucent: an opaque white is what withoutBoxFill strips")
+  T.check(wash.alpha > 0.4, "and opaque enough to earn contrast over dark ground")
+  -- pinned to pw like the player HUD, not to the 160-wide frame
+  T.eq(origin.x, 1920 - (BADGE_W + 4) * 4, "TOP RIGHT pins to the true screen edge")
+  T.check(origin.x > 460, "which is right of where the GB frame ends")
+  T.eq(origin.y, 60 + 4 * 4, "and hangs off the frame's top edge")
+
+  setOptions({ hint_pos = "bottom_left" })
+  overlay(voxelBattle())
+  T.check(origin.x < 100, "BOTTOM LEFT pins to the far left in the arena too")
+  T.check(origin.y > 900, "and to the bottom")
+  setOptions({})
+end
+
+do
+  -- a half-built shot must not be placed against; fall back to the frame
+  local partial = newBattle()
+  partial.dramaticShapeShot = { canvas = "CANVAS", scale = 4 }  -- no pw/lx/ly
+  overlay(partial)
+  T.eq(origin.x, 160 - BADGE_W - 4, "an incomplete shot falls back to the GB frame")
+  T.eq(canvases[1], "NONE", "and never redirects the canvas")
 end
 
 do
@@ -283,9 +368,54 @@ do
   T.check(ok, "a battle without uiSize/bottomUIVisible degrades to 160x144")
 end
 
-Font.draw = realFontDraw
-love.graphics.rectangle = realRectangle
+-- ------- the POKeDEX sprite
+--
+-- The icon is OAK's table POKeDEX read from the player's cache, so it only
+-- exists once a ROM has been imported.  The sprite lookup is resolved once
+-- and remembered, which means a second mod instance -- against data that
+-- HAS the sprite -- is the only honest way to exercise the other branch.
 
 run.release()
+
+do
+  local spriteData = T.fixtures.fresh()
+  spriteData.screens = { DexEntryMenu = function() return { stub = true } end }
+  spriteData.sprites = spriteData.sprites or {}
+  spriteData.sprites.SPRITE_POKEDEX = { image = "cache/sprites/pokedex.png" }
+
+  local drawnImages = {}
+  local realDraw, realNewImage = love.graphics.draw, love.graphics.newImage
+  love.graphics.newImage = function(path) return { path = path,
+    getDimensions = function() return 16, 16 end } end
+  love.graphics.draw = function(image) drawnImages[#drawnImages + 1] = image end
+
+  local run2 = T.sdk.loadMod("mods/battle_dex", { data = spriteData })
+  T.eq(#run2.errors, 0, "loads clean against sprite-bearing data")
+  run2.loader.modOptions.battle_dex = {}
+
+  local battle = newBattle()
+  battle.game = { data = spriteData }
+  resetSpies()
+  Runtime.call("battle.overlay", function() end, battle)
+
+  T.eq(#drawnImages, 1, "the badge draws the cached sprite, not the fallback")
+  T.eq(drawnImages[1].path, "cache/sprites/pokedex.png",
+    "and it is SPRITE_POKEDEX out of the player's own cache")
+  -- 16px sprite widens the badge from 60 to 66, so the right pin moves left
+  T.eq(origin.x, 160 - (16 + 2 + 6 * 8) - 4,
+    "the badge widens to the sprite and stays pinned right")
+  T.eq(drawn[1].y, 4, "8px glyphs are centred against the 16px sprite")
+
+  love.graphics.draw, love.graphics.newImage = realDraw, realNewImage
+  run2.release()
+end
+
+Font.draw = realFontDraw
+love.graphics.rectangle = realRectangle
+love.graphics.translate = realTranslate
+love.graphics.scale = realScale
+love.graphics.setCanvas = realSetCanvas
+love.graphics.setColor = realSetColor
+
 Screens.invalidate()
 T.finish("battle_dex")

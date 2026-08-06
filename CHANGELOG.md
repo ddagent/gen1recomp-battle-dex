@@ -3,6 +3,20 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.2.0
+
+### Changed
+
+- The badge icon is now the real POKeDEX overworld sprite — `SPRITE_POKEDEX`,
+  the one on OAK's table — read from the player's own imported cache at draw
+  time. Nothing is bundled; a cache without it falls back to the drawn glyph.
+- The badge follows the arena instead of the Game Boy frame. Under
+  DRAMATIC_SHAPE it pins to the true screen edge like the engine's own HUDs
+  do, scaled by the arena's scale and drawn into its canvas.
+- No opaque plate inside the arena, matching `OverworldBattle.withoutBoxFill`,
+  which drops every white fill so the diorama shows through. Outside the
+  arena the plate is unchanged.
+
 ## 1.1.0
 
 ### Added

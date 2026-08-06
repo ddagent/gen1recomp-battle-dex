@@ -58,10 +58,25 @@ button's name:
 └──────────┴─────────────────┘
 ```
 
-It is drawn through `battle.overlay` in battle-surface pixels, so it scales
-with the game and holds its corner at any zoom or BATTLE SIZE setting. The
-icon is a 10×10 bitmap authored in `main.lua` — the mod ships no art files
-and nothing derived from a ROM.
+The icon is the real POKéDEX from OAK's table — `SPRITE_POKEDEX`, read from
+your own imported cache at draw time. Nothing is bundled, so the package
+still ships no ROM-derived bytes; a cache without that sprite falls back to a
+small drawn glyph rather than losing the badge.
+
+Placement follows whatever is compositing the battle:
+
+| Frame | Anchor | Backing |
+| --- | --- | --- |
+| OG / WIDE | the battle surface's own edge | opaque plate |
+| DRAMATIC_SHAPE arena | the **true screen edge**, like the engine's HUDs | translucent wash |
+
+The arena case matters because `OverworldBattle` pins the foe's HUD to `x=0`
+and the player's to `pw` — the real screen edges, not the Game Boy frame — so
+a badge that stayed inside the frame would float short of the corner while
+everything around it went wide. It also drops every opaque white fill
+(`withoutBoxFill`), which is why the plate becomes a wash there: bare glyphs
+over a dark wall are unreadable, and `BattleHud` earns its own contrast the
+same way, with tint rather than opacity.
 
 `TOP RIGHT` (the default) overlaps the top ~14px of the foe's sprite slot in
 both layouts, which is why the badge carries its own plate. Most Gen 1 front
