@@ -114,15 +114,11 @@ return function(mod)
   -- same moment the hotkey becomes legal
   local pendingAuto = false
 
-  mod.events:on("battle.started", function(ev)
-    battle = ev.battle
-    pendingAuto = false
-    local species = ev.species
-      or (battle and battle.enemy and battle.enemy.mon
-          and battle.enemy.mon.species)
+  -- One species, one decision -- shared by the battle's opening and by
+  -- every send-out after it.
+  local function consider(theBattle, species)
     if not species then return end
-    local game = battle and battle.game
-    local roll = met(game, species)
+    local roll = met(theBattle and theBattle.game, species)
     -- record the meeting whatever the toggle says, so switching it on later
     -- does not replay every species you have already fought
     if not roll[species] then
@@ -130,6 +126,27 @@ return function(mod)
       roll[species] = true
       mod.save:set("met", roll)
     end
+  end
+
+  mod.events:on("battle.started", function(ev)
+    battle = ev.battle
+    pendingAuto = false
+    consider(battle, ev.species
+      or (battle and battle.enemy and battle.enemy.mon
+          and battle.enemy.mon.species))
+  end)
+
+  -- A trainer with six unseen mons is six first meetings, but battle.started
+  -- only fires once -- so without this the dex opened for their lead and
+  -- stayed shut for the rest of the team.  battle.battler_switched covers
+  -- both a mid-fight switch and the send-out after a faint.
+  mod.events:on("battle.battler_switched", function(ev)
+    local theBattle = ev and ev.battle
+    if not (theBattle and battle and theBattle == battle) then return end
+    -- both sides fire this; only the foe's side is a new face to us
+    local battler = ev.battler
+    if not (battler and battler == theBattle.enemy) then return end
+    consider(theBattle, battler.mon and battler.mon.species)
   end)
 
   mod.events:on("battle.ended", function()

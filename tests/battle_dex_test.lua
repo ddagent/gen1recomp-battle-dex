@@ -263,6 +263,46 @@ do
 end
 
 do
+  -- A trainer with several unseen mons is several first meetings, but
+  -- battle.started fires once.  Without battler_switched the dex opened for
+  -- the lead and stayed shut for the rest of the team.
+  run.loader.modSave.battle_dex = nil
+  local game = dexGame()
+  local b = startDexBattle(game, BRAND_NEW)
+  local before = #pushed
+  step(game)
+  T.eq(#pushed, before + 1, "the trainer's lead opens as usual")
+  table.remove(game.stack.states)          -- close that page
+
+  -- their second mon: a different species, never met
+  local SECOND = "FIXMON_A"
+  b.enemy = { mon = { species = SECOND, level = 9 } }
+  Runtime.emit("battle.battler_switched",
+    { battle = b, battler = b.enemy, previous = nil })
+  step(game)
+  T.eq(#pushed, before + 2, "and so does the next one they send out")
+  T.eq(pushed[#pushed].species, SECOND, "showing that mon, not the lead")
+  table.remove(game.stack.states)
+
+  -- a third that repeats a species already met stays quiet
+  b.enemy = { mon = { species = BRAND_NEW, level = 11 } }
+  Runtime.emit("battle.battler_switched",
+    { battle = b, battler = b.enemy, previous = nil })
+  step(game)
+  T.eq(#pushed, before + 2, "a repeat of one already met does not reopen")
+
+  -- the player's own switch is not a new face
+  local mine = { mon = { species = "FIXMON_B" } }
+  Runtime.emit("battle.battler_switched",
+    { battle = b, battler = mine, previous = nil })
+  step(game)
+  T.eq(#pushed, before + 2, "switching your own mon opens nothing")
+
+  endBattle(game)
+  run.loader.modSave.battle_dex = nil
+end
+
+do
   -- it must wait for the prompt, not land over the intro text
   run.loader.modSave.battle_dex = nil
   local game = dexGame()

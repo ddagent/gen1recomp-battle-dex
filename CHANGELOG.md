@@ -3,6 +3,16 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.7.2
+
+### Fixed
+
+- Against a trainer, only their lead was auto-opened. `battle.started` fires
+  once per battle, so every mon they sent out afterwards was never checked
+  — a team of six unseen mons produced one page. The mod now also listens to
+  `battle.battler_switched`, which covers both a mid-fight switch and the
+  send-out after a faint, and ignores your own side.
+
 ## 1.7.1
 
 ### Fixed
