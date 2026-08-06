@@ -357,11 +357,19 @@ return function(mod)
       -- badge sits the same distance off the edge as it did at full size
       local eff = s * ARENA_SCALE
       local bw, bh = boxW * eff, boxH * eff
+      -- All four edges are the canvas's, not the Game Boy frame's.  The
+      -- engine's own HUD panels are frame-relative vertically (their rects
+      -- are shot.ly + y * s) because they belong to the battle's layout --
+      -- the foe's panel has to sit level with the foe.  This badge does not
+      -- belong to that layout; it is a hint about a button, and pinning it
+      -- to the frame's top edge left shot.ly of dead screen above it (about
+      -- 36px on a 1080p handheld) while the opposite corner was already
+      -- using shot.ph.  Same corner logic on every side now.
       local ox, oy
       if bottomLeft then
         ox, oy = PAD * s, shot.ph - bh - PAD * s
       else
-        ox, oy = shot.pw - bw - PAD * s, shot.ly + PAD * s
+        ox, oy = shot.pw - bw - PAD * s, PAD * s
       end
       g.setCanvas(shot.canvas)
       -- the same blend OverworldBattle sets before its own panel run

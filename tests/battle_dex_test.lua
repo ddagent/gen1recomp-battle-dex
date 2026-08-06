@@ -330,7 +330,9 @@ do
   near(origin.x, 1920 - BOX_W * 4 * ARENA_SCALE - 2 * 4,
     "TOP RIGHT pins to the true screen edge")
   T.check(origin.x > 460, "which is right of where the GB frame ends")
-  T.eq(origin.y, 60 + 2 * 4, "and hangs off the frame's top edge")
+  near(origin.y, 2 * 4,
+    "and hangs off the CANVAS top, not the frame's -- shot.ly was dead space")
+  T.check(origin.y < 60, "which is above where the GB frame begins")
 
   setOptions({ hint_pos = "bottom_left" })
   overlay(voxelBattle())

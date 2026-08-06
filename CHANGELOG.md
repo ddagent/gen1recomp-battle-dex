@@ -3,6 +3,16 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.6.0
+
+### Fixed
+
+- `TOP RIGHT` sat about 36px lower than it needed to. Its right edge was
+  pinned to the canvas (`shot.pw`) but its top to the Game Boy frame
+  (`shot.ly`), so the letterbox offset showed as dead space above the badge —
+  while `BOTTOM LEFT`, two lines away, was already using `shot.ph`. Every
+  edge is the canvas's now.
+
 ## 1.5.0
 
 ### Changed
