@@ -3,6 +3,26 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.3.0
+
+### Changed
+
+- The badge is drawn with the engine's own `Font.drawBox` instead of a
+  hand-rolled rectangle, so its border comes from `Font.BORDER` — the table
+  `src/ui/Theme.lua` rebuilds from `field.theme.border`. A theme mod now
+  restyles this badge along with every other box in the game.
+- The arena's glass is derived from DRAMATIC_SHAPE's own `BattleHud.FROST`
+  and `BattleHud.TINT`, read through its public `exports.lib` at draw time,
+  rather than a constant picked by eye. Falls back to 0.67 when that mod is
+  absent.
+- Inside the arena the box's opaque white interior is stripped exactly the
+  way `OverworldBattle.withoutBoxFill` strips every other box's, with the
+  glass laid in its place.
+
+### Note
+
+Boxes are tile-aligned, so the badge is now 88x32 rather than 70x20.
+
 ## 1.2.0
 
 ### Changed
