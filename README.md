@@ -4,6 +4,8 @@
 
 Read a POKéDEX entry without leaving a battle.
 
+![The badge in the top right of a battle, showing the POKéDEX icon and SEL](docs/screenshot.png)
+
 At the FIGHT/PKMN/ITEM/RUN prompt, press **SELECT** to open the opponent's
 entry. Press **B** to close it and you are back at the prompt, same turn,
 nothing lost.

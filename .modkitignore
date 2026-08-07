@@ -1,3 +1,5 @@
 # Exact relative paths, one per line: tests are for the checkout, not the
-# shipped package.
+# shipped package. Screenshots are for the README and the index listing --
+# players download them once from GitHub, not with every mod update.
 tests/battle_dex_test.lua
+docs/screenshot.png
