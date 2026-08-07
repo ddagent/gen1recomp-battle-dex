@@ -1,7 +1,7 @@
 {
   "id": "battle_dex",
   "name": "Battle Dex",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -13,6 +13,6 @@
   "conflicts": [],
   "incompatible": [],
   "experimental": false,
-  "description": "Open a POKeDEX entry from inside a battle: SELECT reads the opponent, a DEX row in the PKMN menu reads your own, and an on-screen badge says so.",
+  "description": "Read a POKeDEX entry without leaving a battle. SELECT shows the opponent, and a DEX row in the PKMN menu shows one of your own. The first time you meet a species its entry opens on its own, so you never walk past a new one. A small badge shows which button to press.",
   "github": "ddagent/gen1recomp-battle-dex"
 }
