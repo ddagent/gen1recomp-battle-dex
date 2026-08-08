@@ -28,12 +28,14 @@ return function(mod)
     -- forceOwned (engine/events/starter_dex.asm), which is what makes this
     -- worth opening on a first encounter.  Neither setting writes the owned
     -- bit, so dex completion is untouched either way.
-    -- Off by default now.  On, this forced the entry open as though the
-    -- species were caught -- which overrode dex_pages' own OWNED DATA ONLY
-    -- gate, so a POKeMON you had merely glimpsed in battle handed over its
-    -- stats, its locations and its whole movelist.  Seen gets you the
-    -- picture; owned gets you the data, which is both what the engine's own
-    -- dex does and how it works in the show.
+    -- The entry page always opens in full: pointing the POKeDEX at
+    -- something and being told what it is IS the POKeDEX, and it is what
+    -- the FUCHSIA placards do.  Browsing the dex from the menu still hides
+    -- an unowned species -- that is the engine's own rule and it stays.
+    --
+    -- What this toggle decides is everything BEHIND that first page: the
+    -- stats, the catch odds, the locations, the whole movelist.  Off, they
+    -- follow real ownership, so a glimpse in battle stays a glimpse.
     { key = "full_entry", label = "SHOW UNSEEN DATA", type = "toggle",
       default = false },
     { key = "hint", label = "SHOW DEX BADGE", type = "toggle", default = true },
@@ -183,8 +185,14 @@ return function(mod)
         .. "content.pokemon before it can have a dex page", tostring(species))
       return
     end
-    mod.ui.push(game, ENTRY_SCREEN,
-      { species = species, forceOwned = mod.options:get("full_entry") })
+    -- forceOwned always: the entry page opens whether or not it is caught.
+    -- entryOnly unless SHOW UNSEEN DATA is on: the pages behind it keep
+    -- following real ownership.
+    mod.ui.push(game, ENTRY_SCREEN, {
+      species = species,
+      forceOwned = true,
+      entryOnly = mod.options:get("full_entry") ~= true,
+    })
   end
 
   -- ------- door 1: the opponent, from the battle menu

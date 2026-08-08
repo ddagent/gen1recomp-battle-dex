@@ -93,11 +93,13 @@ do
   step(game)
   T.eq(#pushed, 1, "SELECT at the battle menu opens a page")
   T.eq(pushed[1].species, SPECIES, "the page is the opponent's species")
-  -- Seen gets you the picture, owned gets you the data.  Forcing this on
-  -- overrode dex_pages' own OWNED DATA ONLY gate, so a POKeMON glimpsed in
-  -- battle handed over its stats and its whole movelist.
-  T.eq(pushed[1].forceOwned, false,
-    "SHOW UNSEEN DATA defaults OFF, so ownership decides what shows")
+  -- The entry page always opens: pointing the dex at something and being
+  -- told what it is IS the dex, and it is what the FUCHSIA placards do.
+  T.eq(pushed[1].forceOwned, true, "the entry page opens whether or not it is caught")
+  -- What is gated is everything behind it -- stats, catch odds, locations,
+  -- the movelist -- which keep following real ownership by default.
+  T.eq(pushed[1].entryOnly, true,
+    "SHOW UNSEEN DATA off: the pages behind the entry stay owner-only")
   T.eq(game.stack:top().stub, true, "the page lands on the stack above the battle")
 
   -- with the page on top the battle is no longer the input state, so a
@@ -738,6 +740,21 @@ do
   Runtime.call("input.step", function() end, game2, 0)
   T.eq(#pushed, 1, "with the POKeDEX in hand the page opens")
   endBattle(game2)
+end
+
+-- ------- SHOW UNSEEN DATA opens the pages behind the entry
+do
+  setOptions({ foe_button = "select", full_entry = true })
+  local game = newGame("select")
+  local battle = newBattle()
+  startBattle(game, battle)
+  pushed = {}
+  Runtime.call("input.step", function() end, game, 0)
+  T.eq(#pushed, 1, "the page still opens")
+  T.eq(pushed[1].forceOwned, true, "the entry page as always")
+  T.eq(pushed[1].entryOnly, false,
+    "and with the toggle on, the pages behind it open too")
+  endBattle(game)
 end
 
 T.finish("battle_dex")

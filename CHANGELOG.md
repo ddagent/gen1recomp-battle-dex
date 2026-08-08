@@ -3,6 +3,19 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.7.6
+
+### Fixed
+
+- **The entry page opens again, whether or not you own it.** 1.7.5 stopped
+  forcing it, which was a step too far: pointing the POKeDEX at something
+  and being told what it is *is* the POKeDEX, and it is what the FUCHSIA
+  placards do. Browsing the dex from the menu still hides an unowned
+  species -- that is the engine's rule and it stays.
+- `SHOW UNSEEN DATA` now decides only what sits **behind** the entry page:
+  the stats, the catch odds, the locations and the movelist. Off (the
+  default), those follow real ownership, so a glimpse in battle stays a
+  glimpse.
 ## 1.7.5
 
 ### Changed
