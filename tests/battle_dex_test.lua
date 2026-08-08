@@ -34,10 +34,13 @@ Data.screens.DexEntryMenu = function(_, opts)
 end
 Screens.invalidate()
 
-local function newGame(pressed)
+-- The dex has to be in hand before any of this is reachable: OAK gives it
+-- after the parcel, and until then the mod must stay out of the way.  The
+-- gate is exercised on its own further down.
+local function newGame(pressed, noDex)
   return {
     data = Data,
-    save = {},
+    save = { flags = noDex and {} or { EVENT_GOT_POKEDEX = true } },
     input = { wasPressed = function(_, btn) return pressed == btn end },
     stack = {
       states = {},
@@ -50,7 +53,11 @@ end
 -- stands in for a BattleState: only the fields the mod is allowed to read
 local function newBattle(over)
   local battle = { phase = "menu", kind = "wild", surface = { 160, 144 },
-                   enemy = { mon = { species = SPECIES, level = 5 } } }
+                   enemy = { mon = { species = SPECIES, level = 5 } },
+                   -- BattleState carries its game (BattleState.lua:564); the
+                   -- badge is handed the battle, so it reads the dex through
+                   -- this.  Overridable, for the no-dex case.
+                   game = { save = { flags = { EVENT_GOT_POKEDEX = true } } } }
   for k, v in pairs(over or {}) do battle[k] = v end
   function battle:battleKind() return self.kind end
   function battle:uiSize() return self.surface[1], self.surface[2] end
@@ -61,6 +68,10 @@ end
 local function step(game) Runtime.call("input.step", function() end, game, 1 / 60) end
 
 local function startBattle(game, battle)
+  -- BattleState carries the game it belongs to (BattleState.lua:564), and
+  -- the badge is handed the battle rather than the game, so the fixture has
+  -- to carry it too or the dex check has nothing to read
+  battle.game = game
   game.stack:push(battle)
   Runtime.emit("battle.started", { battle = battle })
   return battle
@@ -82,7 +93,11 @@ do
   step(game)
   T.eq(#pushed, 1, "SELECT at the battle menu opens a page")
   T.eq(pushed[1].species, SPECIES, "the page is the opponent's species")
-  T.eq(pushed[1].forceOwned, true, "SHOW UNSEEN DATA defaults to the full entry")
+  -- Seen gets you the picture, owned gets you the data.  Forcing this on
+  -- overrode dex_pages' own OWNED DATA ONLY gate, so a POKeMON glimpsed in
+  -- battle handed over its stats and its whole movelist.
+  T.eq(pushed[1].forceOwned, false,
+    "SHOW UNSEEN DATA defaults OFF, so ownership decides what shows")
   T.eq(game.stack:top().stub, true, "the page lands on the stack above the battle")
 
   -- with the page on top the battle is no longer the input state, so a
@@ -599,7 +614,7 @@ do
       end } }
 
   local b = newBattle()
-  b.game = { data = glassData }
+  b.game = { data = glassData, save = { flags = { EVENT_GOT_POKEDEX = true } } }
   b.dramaticShapeShot = { canvas = "CANVAS", scale = 4,
                           pw = 1920, ph = 1080, lx = 460, ly = 60 }
   resetSpies()
@@ -619,7 +634,7 @@ do
   -- glyphs would otherwise sit on bare scene
   FAKE_HUD.panel = function() return false end
   local b2 = newBattle()
-  b2.game = { data = glassData }
+  b2.game = { data = glassData, save = { flags = { EVENT_GOT_POKEDEX = true } } }
   b2.dramaticShapeShot = b.dramaticShapeShot
   resetSpies()
   Runtime.call("battle.overlay", function() end, b2)
@@ -656,7 +671,7 @@ do
   run2.loader.modOptions.battle_dex = {}
 
   local battle = newBattle()
-  battle.game = { data = spriteData }
+  battle.game = { data = spriteData, save = { flags = { EVENT_GOT_POKEDEX = true } } }
   resetSpies()
   Runtime.call("battle.overlay", function() end, battle)
 
@@ -681,4 +696,48 @@ love.graphics.setCanvas = realSetCanvas
 love.graphics.setColor = realSetColor
 
 Screens.invalidate()
+-- ------- no POKeDEX, no dex page
+--
+-- The very first battle in the game is the rival's EEVEE in OAK's lab, and
+-- that happens before OAK hands the POKeDEX over -- the START menu does not
+-- even list one yet.  The mod was opening a full entry for it: a page the
+-- player has no way to reach by any other means, hours early.
+do
+  setOptions({ auto_open = true, foe_button = "select" })
+
+  local game = newGame("select", true)          -- no EVENT_GOT_POKEDEX
+  game.save.pokedex = { seen = {}, owned = {} }
+  local battle = newBattle()
+  battle.game = game
+  startBattle(game, battle)
+
+  pushed = {}
+  Runtime.call("input.step", function() end, game, 0)
+  T.eq(#pushed, 0, "a species never met opens nothing without a POKeDEX")
+
+  -- the hotkey is refused for the same reason
+  pushed = {}
+  Runtime.call("input.step", function() end, game, 0)
+  T.eq(#pushed, 0, "and pressing the button does not open it either")
+
+  endBattle(game)
+
+  -- The badge rides the same hasDex check, but it is not asserted here:
+  -- by this point in the file the badge does not draw for a plain battle
+  -- either, so a "no badge" check would pass without the dex gate doing any
+  -- of the work.  A test that cannot fail is worse than no test.
+  setOptions({ auto_open = true, foe_button = "select" })
+
+  -- once OAK has handed it over, everything works as before
+  local game2 = newGame("select")
+  game2.save.pokedex = { seen = {}, owned = {} }
+  local battle2 = newBattle()
+  battle2.game = game2
+  startBattle(game2, battle2)
+  pushed = {}
+  Runtime.call("input.step", function() end, game2, 0)
+  T.eq(#pushed, 1, "with the POKeDEX in hand the page opens")
+  endBattle(game2)
+end
+
 T.finish("battle_dex")

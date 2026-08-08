@@ -3,6 +3,27 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 1.7.5
+
+### Changed
+
+- **`SHOW UNSEEN DATA` now defaults OFF.** On, it forced the entry open as
+  though the species were caught, which overrode dex_pages' own
+  `OWNED DATA ONLY` gate -- so a POKeMON you had merely glimpsed in battle
+  handed over its stats, its locations and its whole movelist. Seen gets you
+  the picture; owned gets you the data, which is both what the engine's own
+  dex does and how it works in the show. Turn it back on if you prefer the
+  old behaviour.
+## 1.7.4
+
+### Fixed
+
+- **A dex page opened before the player owned a POKeDEX.** The mod only
+  asked "have I met this species", never "is there a dex to open" -- so the
+  rival's EEVEE in OAK's lab, the very first battle in the game, opened a
+  full entry hours before OAK hands one over. Both doors and the badge now
+  check `EVENT_GOT_POKEDEX`.
+
 ## 1.7.3
 
 ### Changed

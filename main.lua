@@ -28,8 +28,14 @@ return function(mod)
     -- forceOwned (engine/events/starter_dex.asm), which is what makes this
     -- worth opening on a first encounter.  Neither setting writes the owned
     -- bit, so dex completion is untouched either way.
+    -- Off by default now.  On, this forced the entry open as though the
+    -- species were caught -- which overrode dex_pages' own OWNED DATA ONLY
+    -- gate, so a POKeMON you had merely glimpsed in battle handed over its
+    -- stats, its locations and its whole movelist.  Seen gets you the
+    -- picture; owned gets you the data, which is both what the engine's own
+    -- dex does and how it works in the show.
     { key = "full_entry", label = "SHOW UNSEEN DATA", type = "toggle",
-      default = true },
+      default = false },
     { key = "hint", label = "SHOW DEX BADGE", type = "toggle", default = true },
     -- TOP RIGHT is over the foe's pic slot in both layouts, so the badge
     -- carries its own plate.  BOTTOM LEFT is the genuinely empty corner on
@@ -154,8 +160,20 @@ return function(mod)
     pendingAuto = false
   end)
 
+  -- The POKeDEX has to exist before it can be opened.  OAK hands it over
+  -- after the parcel; until then the game has no dex at all -- START does
+  -- not even list it.  Without this the mod opened an entry for the rival's
+  -- EEVEE during the very first battle in the lab, well before the player
+  -- owns one.  Checked here rather than at each door, because the auto-open
+  -- and the hotkey both come through this one function.
+  local function hasDex(game)
+    local flags = game and game.save and game.save.flags
+    return (flags and flags.EVENT_GOT_POKEDEX) == true
+  end
+
   local function openEntry(game, species)
     if not species then return end
+    if not hasDex(game) then return end
     local def = game and game.data and game.data.pokemon
       and game.data.pokemon[species]
     if not def then
@@ -177,6 +195,8 @@ return function(mod)
   -- battle rather than the game.
   local function readableFoe(theBattle)
     if not theBattle then return nil end
+    -- no dex, no badge: it advertises a page that cannot be opened yet
+    if not hasDex(theBattle.game) then return nil end
     -- only at the FIGHT/PKMN/ITEM/RUN prompt: mid-turn the battle is
     -- animating, and a pushed screen would freeze it mid-sequence
     if theBattle.phase ~= "menu" then return nil end
